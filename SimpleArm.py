@@ -13,7 +13,7 @@ frames = 500
 interval = 50
 
 fig = plt.figure()
-ax = fig.add_subplot(projection='3d')
+ax = fig.add_subplot()
 lines = ax.plot([0, l1], [0, 0], [0, 0], [0, l2], marker='o')
 
 def generate_arm_angles(x, y, l1, l2):
@@ -85,9 +85,11 @@ def main():
     ax.plot((1), (0), marker='>', transform=ax.get_yaxis_transform(), **arrow_fmt)
     ax.plot((0), (1), marker='^', transform=ax.get_xaxis_transform(), **arrow_fmt)
 
-    ax.set_xlim(-maxmag, maxmag)
-    ax.set_ylim(-maxmag, maxmag)
-    ax.set_zlim(-maxmag, maxmag)
+    # ax.set_xlim(-maxmag, maxmag)
+    # ax.set_ylim(-maxmag, maxmag)
+    # ax.set_zlim(-maxmag, maxmag)
+
+    plt.axis([-maxmag, maxmag,-maxmag, maxmag])
 
     ani = animation.FuncAnimation(fig=fig, func=update2dArm, frames=frames, interval=interval, repeat=False)
 
