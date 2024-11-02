@@ -3,6 +3,7 @@ import matplotlib.animation as animation
 import numpy as np
 import math
 
+l0 = 0.3
 l1 = 1
 l2 = 1
 
@@ -35,7 +36,7 @@ def generate2JointSinglePlainArm(x, y, l1, l2):
 def update2JointSinglePlainArm(frame):
     # Plot Dataupdate2JointSinglePlainArm
     desiredx = x + 0.5 * math.cos(2*math.pi*frame/interval)
-    desiredy = y + 0.5 * math.sin(2*math.pi*frame/interval)
+    desiredy = y + 0.5 * math.sin(2*math.pi*frame/interval) 
 
     theta1, theta2 = generate2JointSinglePlainArm(desiredx, desiredy, l1 , l2)
 
@@ -52,7 +53,7 @@ def update2JointSinglePlainArm(frame):
     ax.plot([x1, x2], [y1, y2], [0,0], color='r', marker='o')
 
 def generate3Joint3DArmAnglesZ(x, y, z, l1, l2):
-    theta3 = math.acos((x**2 + y**2 + z**2 - l2**2 - l1**2)/(2*l2*l1))
+    theta3= math.acos((x**2 + y**2 + z**2 - l2**2 - l1**2)/(2*l2*l1))
     theta2 = math.atan(z/math.sqrt(x**2 + y**2)) - math.atan((l2*math.sin(theta3))/(l2*math.cos(theta3) + l1))
     theta1 = math.atan(y/x)
     return [theta1, theta2, theta3]
@@ -121,9 +122,9 @@ def update3Joint3DArmX(frame):
 
     P2 = np.add(P1, [l2*math.sin(theta2 + theta3), r2*math.sin(theta1), r2*math.cos(theta1)])
 
-    # Wipe old plot
-    for artist in plt.gca().lines + plt.gca().collections:
-        artist.remove()
+    # # Wipe old plot
+    # for artist in plt.gca().lines + plt.gca().collections:
+    #     artist.remove()
 
     # Plot lines connecting each point (origin, P1), (P1, P2)
     # ax.plot([0, x1], [0, y1], [0,0], color='b', marker='o')
@@ -135,6 +136,53 @@ def update3Joint3DArmX(frame):
     
     for i in range(1, len(P)):
         ax.plot([P[i - 1][0], P[i][0]], [P[i - 1][1], P[i][1]], [P[i - 1][2], P[i][2]], color=get_colour(i))
+
+def update3Arm3DAnglesX(frame):
+    # Animate Initial Values
+    desiredx = x + 0.5 * math.cos(2*math.pi*frame/interval)
+    desiredy = y + 0.5 * math.sin(2*math.pi*frame/interval)
+    desiredz = z + 0.5 * math.sin(2*math.pi*frame/interval)
+
+    # Generate Angles
+    theta1, theta2, theta3 = generate3Joint3DArmAnglesX(desiredx, desiredy, desiredz, l1 , l2)
+
+    # Compute all positions using forward Kinematics
+
+    P0 = np.array([0, 0, 0])
+
+    r1 = l1*math.cos(theta2)
+
+    P1 = np.add(P0, [l1*math.sin(theta2), r1*math.sin(theta1), r1*math.cos(theta1)])
+
+    r2 = l2*math.cos(theta2 + theta3)
+
+    P2 = np.add(P1, [l2*math.sin(theta2 + theta3), r2*math.sin(theta1), r2*math.cos(theta1)])
+
+    # Wipe old plot
+    for artist in plt.gca().lines + plt.gca().collections:
+        artist.remove()
+
+    # Plot lines connecting each point (origin, P1), (P1, P2)
+    # ax.plot([0, x1], [0, y1], [0,0], color='b', marker='o')
+    # ax.plot([x1, x2], [y1, y2], [0,0], color='r', marker='o')
+
+    P = [P0, P0, P1, P2]
+
+    theta1 += 90
+
+    newP = P
+    for i, p in enumerate(P):
+        newP[i] = np.array([p[0],p[1] + l0*math.cos(theta1),p[2] + l0*math.sin(theta1)])
+
+    P[0] = P0
+
+    if len(P) < 2:
+        return
+    
+    for i in range(1, len(P)):
+        ax.plot([P[i - 1][0], P[i][0]], [P[i - 1][1], P[i][1]], [P[i - 1][2], P[i][2]], color=get_colour(i))
+
+        update3Joint3DArmX(frame)
 
 def main():
     maxmag = l1 + l2
@@ -184,7 +232,7 @@ def main():
     ax.set_zlim(-maxmag, maxmag)
 
 
-    ani = animation.FuncAnimation(fig=fig, func=update3Joint3DArmX, frames=frames, interval=interval, repeat=False)
+    ani = animation.FuncAnimation(fig=fig, func=update3Arm3DAnglesX, frames=frames, interval=interval, repeat=False)
 
     if save_animation:
         filepath = "animation.gif" 
