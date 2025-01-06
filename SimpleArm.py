@@ -2,14 +2,18 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import numpy as np
 import math
+import functools
+from IKEngine import *
 
 l0 = 0.3
 l1 = 1
 l2 = 1
 
 x = 0.5
-y = 0.7
-z = 0.7
+y = l0
+z = -0.7
+
+
 
 frames = 5000
 interval = 50
@@ -18,8 +22,6 @@ save_animation = False
 
 fig = plt.figure()
 ax = fig.add_subplot(projection='3d')
-lines = ax.plot([0, l1], [0, 0], [0, 0], [0, l2], marker='o')
-
 
 def magnitude(x):
     return math.sqrt(sum(i**2 for i in x))
@@ -30,7 +32,7 @@ def get_colour(i):
 
 def generate2JointSinglePlainArm(x, y, l1, l2):
     theta2 = math.acos((x**2 + y**2 - l2**2 - l1**2)/(2*l2*l1))
-    theta1 = math.atan(y/x) - math.atan((l2*math.sin(theta2))/(l2*math.cos(theta2) + l1))
+    theta1 = math.atan2(y, x) - math.atan2((l2*math.sin(theta2)), (l2*math.cos(theta2) + l1))
     return [theta1, theta2]
 
 def update2JointSinglePlainArm(frame):
@@ -54,15 +56,18 @@ def update2JointSinglePlainArm(frame):
 
 def generate3Joint3DArmAnglesZ(x, y, z, l1, l2):
     theta3= math.acos((x**2 + y**2 + z**2 - l2**2 - l1**2)/(2*l2*l1))
-    theta2 = math.atan(z/math.sqrt(x**2 + y**2)) - math.atan((l2*math.sin(theta3))/(l2*math.cos(theta3) + l1))
-    theta1 = math.atan(y/x)
+    theta2 = math.atan2(z, math.sqrt(x**2 + y**2)) - math.atan2((l2*math.sin(theta3)), (l2*math.cos(theta3) + l1))
+    theta1 = math.atan2(y, x)
     return [theta1, theta2, theta3]
 
-def update3Joint3DArmZ(frame):
+def update3Joint3DArmZ(frame, position=None):
     # Animate Initial Values
     desiredx = x + 0.5 * math.cos(2*math.pi*frame/interval)
     desiredy = y + 0.5 * math.sin(2*math.pi*frame/interval)
     desiredz = z + 0.5 * math.sin(2*math.pi*frame/interval)
+
+    if position is not None:
+        desiredx, desiredy, desiredz = position
 
     # Generate Angles
     theta1, theta2, theta3 = generate3Joint3DArmAnglesZ(desiredx, desiredy, desiredz, l1 , l2)
@@ -79,29 +84,33 @@ def update3Joint3DArmZ(frame):
 
     P2 = np.add(P1, [r2*math.cos(theta1), r2*math.sin(theta1), l2*math.sin(theta2 + theta3)])
 
-    # Wipe old plot
-    for artist in plt.gca().lines + plt.gca().collections:
-        artist.remove()
-
     # Plot lines connecting each point (origin, P1), (P1, P2)
     # ax.plot([0, x1], [0, y1], [0,0], color='b', marker='o')
     # ax.plot([x1, x2], [y1, y2], [0,0], color='r', marker='o')
 
-    P = [P0, P1, P2]
-    if len(P) < 2:
-        return
-    
-    for i in range(1, len(P)):
-        ax.plot([P[i - 1][0], P[i][0]], [P[i - 1][1], P[i][1]], [P[i - 1][2], P[i][2]], color=get_colour(i))
+    P = [P0, P0, P1, P2]
 
+    theta1 += 90
+
+    newP = P
+    for i, p in enumerate(P):
+        newP[i] = np.array([p[0] + l0*math.cos(theta1),p[1] + l0*math.sin(theta1), p[2]])
+
+    P[0] = P0
+
+    skeleton = []
+    for i in range(1, len(P)):
+        skeleton.append([P[i - 1], P[i]])
+
+    return np.array(skeleton)
 
 def generate3Joint3DArmAnglesX(x, y, z, l1, l2):
     theta3 = math.acos((x**2 + y**2 + z**2 - l2**2 - l1**2)/(2*l2*l1))
-    theta2 = math.atan(x/math.sqrt(y**2 + z**2)) - math.atan((l2*math.sin(theta3))/(l2*math.cos(theta3) + l1))
-    theta1 = math.atan(z/y)
+    theta2 = math.atan2(x, math.sqrt(y**2 + z**2)) - math.atan2((l2*math.sin(theta3)), (l2*math.cos(theta3) + l1))
+    theta1 = math.atan2(z, y)
     return [theta1, theta2, theta3]
 
-def update3Joint3DArmX(frame):
+def update3Joint3DArmX(frame, position=None):
     # Animate Initial Values
     desiredx = x + 0.5 * math.cos(2*math.pi*frame/interval)
     desiredy = y + 0.5 * math.sin(2*math.pi*frame/interval)
@@ -121,30 +130,32 @@ def update3Joint3DArmX(frame):
     r2 = l2*math.cos(theta2 + theta3)
 
     P2 = np.add(P1, [l2*math.sin(theta2 + theta3), r2*math.sin(theta1), r2*math.cos(theta1)])
-
-    # # Wipe old plot
-    # for artist in plt.gca().lines + plt.gca().collections:
-    #     artist.remove()
-
-    # Plot lines connecting each point (origin, P1), (P1, P2)
-    # ax.plot([0, x1], [0, y1], [0,0], color='b', marker='o')
-    # ax.plot([x1, x2], [y1, y2], [0,0], color='r', marker='o')
-
-    P = [P0, P1, P2]
-    if len(P) < 2:
-        return
     
-    for i in range(1, len(P)):
-        ax.plot([P[i - 1][0], P[i][0]], [P[i - 1][1], P[i][1]], [P[i - 1][2], P[i][2]], color=get_colour(i))
+    P = [P0, P1, P2]
 
-def update3Arm3DAnglesX(frame):
+    skeleton = []
+    for i in range(1, len(P)):
+        skeleton.append([P[i - 1], P[i]])
+
+    return np.array(skeleton)
+
+def generate3Arm3DAnglesX(x, y, z, l1, l2, l3):
+    theta1 = math.asin(l1/math.sqrt(y**2 + z**2)) - math.atan2(y,z)
+    la = (y - z)*(math.sin(theta1) - math.cos(theta1)) + l1
+    theta2, theta3 = generate2JointSinglePlainArm(la, x, l2, l3)
+    return [theta1, theta2, theta3]
+
+def update3Arm3DAnglesX(frame, position=None):
     # Animate Initial Values
     desiredx = x + 0.5 * math.cos(2*math.pi*frame/interval)
     desiredy = y + 0.5 * math.sin(2*math.pi*frame/interval)
     desiredz = z + 0.5 * math.sin(2*math.pi*frame/interval)
 
+    if position is not None:
+        desiredx, desiredy, desiredz = position
+
     # Generate Angles
-    theta1, theta2, theta3 = generate3Joint3DArmAnglesX(desiredx, desiredy, desiredz, l1 , l2)
+    theta1, theta2, theta3 = generate3Arm3DAnglesX(desiredx, desiredy, desiredz, l0 , l1, l2)
 
     # Compute all positions using forward Kinematics
 
@@ -157,10 +168,6 @@ def update3Arm3DAnglesX(frame):
     r2 = l2*math.cos(theta2 + theta3)
 
     P2 = np.add(P1, [l2*math.sin(theta2 + theta3), r2*math.sin(theta1), r2*math.cos(theta1)])
-
-    # Wipe old plot
-    for artist in plt.gca().lines + plt.gca().collections:
-        artist.remove()
 
     # Plot lines connecting each point (origin, P1), (P1, P2)
     # ax.plot([0, x1], [0, y1], [0,0], color='b', marker='o')
@@ -176,13 +183,115 @@ def update3Arm3DAnglesX(frame):
 
     P[0] = P0
 
-    if len(P) < 2:
-        return
-    
+    skeleton = []
     for i in range(1, len(P)):
-        ax.plot([P[i - 1][0], P[i][0]], [P[i - 1][1], P[i][1]], [P[i - 1][2], P[i][2]], color=get_colour(i))
+        skeleton.append([P[i - 1], P[i]])
 
-        update3Joint3DArmX(frame)
+    return np.array(skeleton)
+
+def getCanisSkeleton(frame):
+    # Animate Initial Values
+
+    NUM_OF_LEGS = 4
+
+    skeleton = np.array([[]])
+
+    BODY_WIDTH = 1
+
+    BODY_LENGTH = 2.5
+
+    leg_origins = np.array([[BODY_LENGTH/2,BODY_WIDTH/2, 0], 
+                            [BODY_LENGTH/2,-BODY_WIDTH/2, 0], 
+                            [-BODY_LENGTH/2,BODY_WIDTH/2, 0], 
+                            [-BODY_LENGTH/2,-BODY_WIDTH/2, 0]])
+    
+    # add frame of body to skeleton
+    skeleton = np.append(skeleton, [leg_origins[0], leg_origins[1]])
+    skeleton = np.append(skeleton, [leg_origins[1], leg_origins[3]])
+    skeleton = np.append(skeleton, [leg_origins[3], leg_origins[2]])
+    skeleton = np.append(skeleton, [leg_origins[2], leg_origins[0]])
+
+    for i in range(NUM_OF_LEGS):
+        desiredx = x + 0.5 * math.cos(2*math.pi*frame/interval - i*math.pi/NUM_OF_LEGS)
+        desiredy = 1 #y if i % 2 == 0 else -y #+ 0.5 * math.sin(2*math.pi*frame/interval)
+        desiredz = z + 0.5 * math.sin(2*math.pi*frame/interval - i*math.pi/NUM_OF_LEGS)
+
+        position = np.array([desiredx, desiredy, desiredz])
+
+        leg_skeleton = update3Joint3DArmX(frame, position)
+
+        # translate each set of joints to the leg origin
+        for j in range(len(leg_skeleton)):
+            for k in range(len(leg_skeleton[j])):
+                leg_skeleton[j][k] = np.add(leg_skeleton[j][k], leg_origins[i])
+        
+
+        # add legs to skeleton
+        skeleton = np.append(skeleton, leg_skeleton)
+
+    skeleton = skeleton.reshape(-1, 2, 3)
+    return skeleton
+
+def getCanisSkeleton(frame):
+    # Animate Initial Values
+
+    NUM_OF_LEGS = 4
+
+    skeleton = np.array([[]])
+
+    BODY_WIDTH = 1
+
+    BODY_LENGTH = 2.5
+
+    leg_origins = np.array([[BODY_LENGTH/2,BODY_WIDTH/2, 0], 
+                            [BODY_LENGTH/2,-BODY_WIDTH/2, 0], 
+                            [-BODY_LENGTH/2,BODY_WIDTH/2, 0], 
+                            [-BODY_LENGTH/2,-BODY_WIDTH/2, 0]])
+    
+    # add frame of body to skeleton
+    skeleton = np.append(skeleton, [leg_origins[0], leg_origins[1]])
+    skeleton = np.append(skeleton, [leg_origins[1], leg_origins[3]])
+    skeleton = np.append(skeleton, [leg_origins[3], leg_origins[2]])
+    skeleton = np.append(skeleton, [leg_origins[2], leg_origins[0]])
+
+    for i in range(NUM_OF_LEGS):
+        desiredx = x + 0.5 * math.cos(2*math.pi*frame/interval - i*math.pi/NUM_OF_LEGS)
+        desiredy = 1 #y if i % 2 == 0 else -y #+ 0.5 * math.sin(2*math.pi*frame/interval)
+        desiredz = z + 0.5 * math.sin(2*math.pi*frame/interval - i*math.pi/NUM_OF_LEGS)
+
+        position = np.array([desiredx, desiredy, desiredz])
+
+        leg_skeleton = update3Joint3DArmX(frame, position)
+
+        # translate each set of joints to the leg origin
+        for j in range(len(leg_skeleton)):
+            for k in range(len(leg_skeleton[j])):
+                leg_skeleton[j][k] = np.add(leg_skeleton[j][k], leg_origins[i])
+        
+
+        # add legs to skeleton
+        skeleton = np.append(skeleton, leg_skeleton)
+
+    skeleton = skeleton.reshape(-1, 2, 3)
+    return skeleton
+
+def updatePlot(frame, getUpdatedSkeleton):
+
+    skeleton = getUpdatedSkeleton(frame) # Adjacency list of joint connections
+
+    # Wipe old plot
+    for artist in plt.gca().lines + plt.gca().collections:
+        artist.remove()
+
+    for i, adjacency in enumerate(skeleton):
+        if len(adjacency) != 2:
+            print("Incorrect element length")
+
+        ax.plot([adjacency[0][0], adjacency[1][0]], [adjacency[0][1], adjacency[1][1]], [adjacency[0][2], adjacency[1][2]], color=get_colour(i))
+
+
+def on_close(event):
+    exit()
 
 def main():
     maxmag = l1 + l2
@@ -191,6 +300,8 @@ def main():
     if (magnitude([x,y]) > maxmag):
         print("Position impossible!")
         return False
+
+    ax.plot([0, l1], [0, 0], [0, 0], [0, l2], marker='o')
 
     ax.set_aspect('equal', adjustable='box')
 
@@ -231,8 +342,9 @@ def main():
     ax.set_ylim(-maxmag, maxmag)
     ax.set_zlim(-maxmag, maxmag)
 
+    fig.canvas.mpl_connect('close_event', on_close)
 
-    ani = animation.FuncAnimation(fig=fig, func=update3Arm3DAnglesX, frames=frames, interval=interval, repeat=False)
+    ani = animation.FuncAnimation(fig=fig, func=functools.partial(updatePlot, getUpdatedSkeleton=getCanisSkeleton), frames=frames, interval=interval, repeat=False)
 
     if save_animation:
         filepath = "animation.gif" 
