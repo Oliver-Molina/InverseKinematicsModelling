@@ -5,12 +5,14 @@ import math
 import functools
 from IKEngine import *
 from CanisArmModel import *
+from SSRTArm import *
+from SSRTArm2StageDirect import *
 import sys
 
-frames = 100
-interval = 50
+frames = 1000
+interval = 10
 
-save_animation = True
+save_animation = False
 
 fig = plt.figure()
 ax = fig.add_subplot(projection='3d')
@@ -108,18 +110,22 @@ def get_colour(i):
 #     skeleton = skeleton.reshape(-1, 2, 3)
 #     return skeleton
 
-def updatePlot(frame, ikEngine, targets, animationEnabled):
+def updatePlot(frame, ikEngine, targets, orientations, animationEnabled):
     animatedTargets = targets
     if animationEnabled:
         for i in range(animatedTargets.shape[0]):
             offset = math.pi/2 * i
-            desiredx = 0.3 * math.cos(2*math.pi*frame/interval + offset) / (2*math.pi)
+            desiredx = 0.7 * math.cos(2*math.pi*frame/interval + offset) / (2*math.pi)
             desiredy = 0.0 * math.sin(2*math.pi*frame/interval + offset) / (2*math.pi)
-            desiredz = 0.2 * math.sin(2*math.pi*frame/interval + offset) / (2*math.pi)
+            desiredz = 0.0 * math.sin(2*math.pi*frame/interval + offset) / (2*math.pi)
             animatedTargets[i] = np.add(animatedTargets[i], [desiredx, desiredy, desiredz])
 
-    skeleton = ikEngine.getSkeleton(targets=animatedTargets) # Adjacency list of joint connections
-
+    iterations = 10
+    skeleton = ikEngine.getSkeleton(targets=animatedTargets, orientations=orientations) # Adjacency list of joint connections
+    for i in range(iterations):
+        skeleton = ikEngine.getSkeleton(targets=animatedTargets, orientations=orientations) # Adjacency list of joint connections
+    
+    #print(desiredx - skeleton[-1][-1][0], desiredy - skeleton[-1][-1][1], desiredz - skeleton[-1][-1][2])
     # Wipe old plot
     for artist in plt.gca().lines + plt.gca().collections:
         artist.remove()
@@ -127,7 +133,6 @@ def updatePlot(frame, ikEngine, targets, animationEnabled):
     for i, adjacency in enumerate(skeleton):
         if len(adjacency) != 2:
             print("Incorrect element length")
-
         ax.plot([adjacency[0][0], adjacency[1][0]], [adjacency[0][1], adjacency[1][1]], [adjacency[0][2], adjacency[1][2]], color=get_colour(i))
 
 
@@ -137,33 +142,107 @@ def on_close(event):
 def main(model:str):
     joints = np.array([])
     links = np.array([])
-    targets = np.array([])
+    targets = np.array([None])
+    orientations = np.array([None])
     engine = None
 
     match model:
-        case _:
-            # joints = np.array([[0,0,0], [0,0,0], [0,0,0], [0,0,0]])
-            # links = np.array([[0.3,1,1], [0.3,1,1], [0.3,1,1], [0.3,1,1]])
-            # targets = np.array([[0.4, -0.4, -1.2], [-0.2, -0.4, -1.2], [0.4, 0.4, -1.2], [-0.2, 0.4, -1.2]])
-            # origins = np.array([[0.4,-0.2,0], [-0.4,-0.2,0], [0.4,0.2,0], [-0.4,0.2,0]])
+        case "0":
+            # SSRT ARM
+            links = np.array([[0.0, 0.0, 0.4, 0.2, 0.3, 0.1]])
+            DH_params = np.array([[links[0][0], 0, 0, 0],
+                                [links[0][1], 0, 0, 0],
+                                [links[0][2], 0, 0, 0],
+                                [links[0][3], 0, 0, 0],
+                                [links[0][4], 0, 0, 0],
+                                [links[0][5], 0, 0, 0]])
+            joint_map = np.array([[0, 1], [1, 3], [2, 3], [3, 1], [4, 3], [5, 1]])
 
-            joints = np.array([[0,0,0]])
-            links = np.array([[0.3,1,1]])
-            targets = np.array([[0.4, -0.4, -1.2]])
-            origins = np.array([[0.4,-0.2,0]])
+            # for [i,j] in joint_map:
+            #     DH_params[i][j] = math.pi/4
+
+            [i,j] = joint_map[0]
+            DH_params[i,j] = math.pi/4
+
+            [i,j] = joint_map[1]
+            DH_params[i,j] = -math.pi/4
+
+            [i,j] = joint_map[2]
+            DH_params[i,j] = 2*math.pi/4
+
+            [i,j] = joint_map[3]
+            DH_params[i,j] = 0*math.pi/4
+
+            [i,j] = joint_map[4]
+            DH_params[i,j] = 0*math.pi/4
+
+            [i,j] = joint_map[5]
+            DH_params[i,j] = 0*math.pi/4
+
+
+
+            targets = np.array([[0.3,0.3,0.3]])
+            orientations = np.array([[0,0,0]])
+            origin = np.array([[0, 0, 0]])
+
+            animationEnabled = True
+            manipulators = [SSRTArm(DH_params, joint_map, origin)]
+            engine = IKEngine(manipulators)
+        case "1":
+            joints = np.array([[0*math.pi/2,
+                                0*math.pi/2,
+                                0*math.pi/2, 
+                                1*math.pi/2, 
+                                1*math.pi/2, 
+                                1*math.pi/2]])
+            
+            links = np.array([[0.4,0.3, 0.2]])
+            #targets = np.array([[0.2, -0.2, -0.1]])
+            origins = np.array([[0,0,0]])
+
+            DH_params = np.array([[0, 0, 0, 0],
+                                [0, 0, 0, 0],
+                                [links[0][0], 0, 0, 0],
+                                [links[0][1], 0, 0, 0],
+                                [0, 0, 0, 0],
+                                [links[0][2], 0, 0, 0]])
+            joint_map = np.array([[0, 1], [1, 3], [2, 3], [3, 1], [4, 3], [5, 1]])
+
+
+            for i, joint in enumerate(joints[0]):
+                [j,k] = joint_map[i]
+                DH_params[j, k] = joint
+
+            animationEnabled = False
+            manipulators = [SSRTArm2StageDirect(links[0], origins[0], DH_params, joint_map)]
+            engine = IKEngine(manipulators)
+        case _:
+            joints = np.array([[0,0,0], [0,0,0], [0,0,0], [0,0,0]])
+            links = np.array([[0.3,1,1], [0.3,1,1], [0.3,1,1], [0.3,1,1]])
+            targets = np.array([[0.4, -0.4, -1.2], [-0.2, -0.4, -1.2], [0.4, 0.4, -1.2], [-0.2, 0.4, -1.2]])
+            origins = np.array([[0.4,-0.2,0], [-0.4,-0.2,0], [0.4,0.2,0], [-0.4,0.2,0]])
+
+            # joints = np.array([[0,0,0]])
+            # links = np.array([[0.3,1,1]])
+            # targets = np.array([[0.4, -0.4, -1.2]])
+            # origins = np.array([[0.4,-0.2,0]])
 
             animationEnabled = True
             manipulators = [XOriented3DOF3LinkArm(links[i], joints[i], origins[i]) for i in range(len(joints))]
-            engine = AnalyticalIKEngine(manipulators)
+            engine = IKEngine(manipulators)
     
     # Validate targets
     maxmag = 0
     for i in range(min(len(links), len(targets))):
-        maxmag = max(maxmag, np.sum(links[i]))
-        if (magnitude(targets[i]) > maxmag):
-            print("Position impossible!")
-            return False
+        if targets[i] is not None:
+            maxmag = max(maxmag, np.sum(links[i]))
+            if (magnitude(targets[i]) > maxmag):
+                print("Position impossible!")
+                return False
     
+    if maxmag == 0:
+        maxmag = 1
+
     ticks_frequency = 0.5
     # ax.plot([0, l1], [0, 0], [0, 0], [0, l2], marker='o') I don't remember what this did
 
@@ -208,7 +287,7 @@ def main(model:str):
 
     fig.canvas.mpl_connect('close_event', on_close)
 
-    ani = animation.FuncAnimation(fig=fig, func=functools.partial(updatePlot, ikEngine=engine, targets=targets, animationEnabled=animationEnabled), frames=frames, interval=interval, repeat=False)
+    ani = animation.FuncAnimation(fig=fig, func=functools.partial(updatePlot, ikEngine=engine, targets=targets, orientations=orientations, animationEnabled=animationEnabled), frames=frames, interval=interval, repeat=False)
 
     if save_animation:
         filepath = "animation.gif" 
@@ -216,11 +295,6 @@ def main(model:str):
         ani.save(filepath, writer=writergif)
     else:
         plt.show() 
-
-
-
-
-
 
 
 if __name__ == "__main__":
