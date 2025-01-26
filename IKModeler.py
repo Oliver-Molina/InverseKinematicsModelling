@@ -197,7 +197,8 @@ def main(model:str):
                                 1*math.pi/2]])
             
             links = np.array([[0.4,0.3, 0.2]])
-            #targets = np.array([[0.2, -0.2, -0.1]])
+            targets = np.array([[0.2, -0.2, -0.1]])
+            orientations = np.array([[0,0,0]])
             origins = np.array([[0,0,0]])
 
             DH_params = np.array([[0, 0, 0, 0],
