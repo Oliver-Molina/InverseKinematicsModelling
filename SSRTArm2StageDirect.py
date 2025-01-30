@@ -1,6 +1,5 @@
 from IKEngine import *
 import numpy as np
-import sympy as sp
 import math
 
 def my_DH_trans_matrix(params):
@@ -61,8 +60,12 @@ def rotation_matrix_zyx(orientation:list):
     ])
     
     # Combined rotation matrix: ZYX order
-    R = Ry @ Ry @ Rz  # Matrix multiplication in ZYX order
+    R = Rx @ Ry @ Rz  # Matrix multiplication in ZYX order
+
     return R
+
+def normalize_angle(angle):
+    return (angle + np.pi) % (2 * np.pi) - np.pi
 
 class SSRTArm2StageDirect(Manipulator):
     def __init__(self, links, origin, DH_params, joint_map):
@@ -79,6 +82,9 @@ class SSRTArm2StageDirect(Manipulator):
             for [i,j] in self.joint_map:
                 angles.append(self.DH_params[i][j])
             return np.array(angles)
+        
+        if orientation is None:
+            orientation = self.getUpdatedJointOrientations()[-1]
         
         
         # Solve for theta1 -> theta3 
@@ -145,8 +151,8 @@ class SSRTArm2StageDirect(Manipulator):
         transform = my_trans_EF_eval(self.DH_params)
 
         pos = transform[:3, 3]
-        print(pos)
-        print(self.getUpdatedJointOrientations()[-1])
+        #print(pos)
+        #print(self.getUpdatedJointOrientations()[-1])
 
 
         return angles
@@ -172,10 +178,8 @@ class SSRTArm2StageDirect(Manipulator):
             current_transform = current_transform @ trans
             point = current_transform[:3, 3]
             point = point.reshape(3)
-            #point = np.add(point, P[i])
             P.append(point)
 
-        #print(P[-3])
         return P
 
     def getUpdatedJointOrientations(self, angles=None):
@@ -191,27 +195,18 @@ class SSRTArm2StageDirect(Manipulator):
         for trans in transforms:
             trans_EF  = trans_EF @ trans
         
-            if trans_EF[0,2] < +1:
-                if trans_EF[0,2] > -1:
-                    thetaY = math.asin(trans_EF[0,2])
-                    thetaX = math.atan2(-trans_EF[1,2], trans_EF[2,2])
-                    thetaZ = math.atan2(-trans_EF[0,1], trans_EF[0,0])
-                else:  # r02 == -1
-                    # Not a unique solution: thetaZ - thetaX = atan2(r10, r11)
-                    thetaY = -math.pi / 2
-                    thetaX = -math.atan2(trans_EF[1,0], trans_EF[1,1])
-                    thetaZ = 0
-            else:  # r02 == +1
-                # Not a unique solution: thetaZ + thetaX = atan2(r10, r11)
-                thetaY = +math.pi / 2
-                thetaX = math.atan2(trans_EF[1,0], trans_EF[1,1])
-                thetaZ = 0
+            if abs(trans_EF[2, 0]) < 1:  # Standard case, no gimbal lock
+                thetaZ = math.atan2(trans_EF[1, 0], trans_EF[0, 0])  # θz (yaw)
+                thetaY = math.asin(-trans_EF[2, 0])         # θy (pitch)
+                thetaX = math.atan2(trans_EF[2, 1], trans_EF[2, 2]) # θx (roll)
+            else:  # Gimbal lock case
+                thetaZ = math.atan2(-trans_EF[0, 1], trans_EF[1, 1])
+                thetaY = math.pi / 2 if trans_EF[2, 0] < 0 else -math.pi / 2
+                thetaX = 0  # Roll is indeterminate in gimbal lock
 
             orientations = np.append(orientations, [thetaX, thetaY, thetaZ])
 
         orientations = orientations.reshape(-1,3)
-
-        #print(orientations[-1])
 
         return orientations
 
