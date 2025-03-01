@@ -10,7 +10,7 @@ from SSRTArm2StageDirect import *
 import sys
 
 frames = 1000
-interval = 10
+interval = 50
 
 save_animation = False
 
@@ -112,13 +112,16 @@ def get_colour(i):
 
 def updatePlot(frame, ikEngine, targets, orientations, animationEnabled):
     animatedTargets = targets
+    animatedOrientations = orientations
     if animationEnabled:
         for i in range(animatedTargets.shape[0]):
             offset = math.pi/2 * i
-            desiredx = 0.7 * math.cos(2*math.pi*frame/interval + offset) / (2*math.pi)
-            desiredy = 0.0 * math.sin(2*math.pi*frame/interval + offset) / (2*math.pi)
+            desiredx = 0.3 * math.cos(2*math.pi*frame/interval + offset) / (2*math.pi)
+            desiredy = 0.3 * math.sin(2*math.pi*frame/interval + offset) / (2*math.pi)
             desiredz = 0.0 * math.sin(2*math.pi*frame/interval + offset) / (2*math.pi)
             animatedTargets[i] = np.add(animatedTargets[i], [desiredx, desiredy, desiredz])
+
+            #animatedOrientations[i] = [2*math.pi*frame/interval for j in range(3)]
 
     iterations = 10
     skeleton = ikEngine.getSkeleton(targets=animatedTargets, orientations=orientations) # Adjacency list of joint connections
@@ -185,7 +188,7 @@ def main(model:str):
             orientations = np.array([[0,0,0]])
             origin = np.array([[0, 0, 0]])
 
-            animationEnabled = True
+            animationEnabled = False
             manipulators = [SSRTArm(DH_params, joint_map, origin)]
             engine = IKEngine(manipulators)
         case "1":
@@ -197,8 +200,8 @@ def main(model:str):
                                 1*math.pi/2]])
             
             links = np.array([[0.4,0.3, 0.2]])
-            targets = np.array([[0.2, -0.2, -0.1]])
-            orientations = np.array([[1*math.pi/4, 1*math.pi/4,1*math.pi/4]])
+            targets = np.array([[0.2, -0.2, 0.2]])
+            orientations = np.array([[0*math.pi/4, 2*math.pi/4,0*math.pi/4]])
             origins = np.array([[0,0,0]])
 
             DH_params = np.array([[0, 0, 0, 0],
@@ -214,8 +217,22 @@ def main(model:str):
                 [j,k] = joint_map[i]
                 DH_params[j, k] = joint
 
-            animationEnabled = False
+            animationEnabled = True
             manipulators = [SSRTArm2StageDirect(links[0], origins[0], DH_params, joint_map)]
+            engine = IKEngine(manipulators)
+        case "2":
+            joints = np.array([[0,0,0]])
+            links = np.array([[0.3,1,1]])
+            targets = np.array([[0.3, -0.0001, -1.2]])
+            origins = np.array([[0, 0, 0]])
+
+            # joints = np.array([[0,0,0]])
+            # links = np.array([[0.3,1,1]])
+            # targets = np.array([[0.4, -0.4, -1.2]])
+            # origins = np.array([[0.4,-0.2,0]])
+
+            animationEnabled = True
+            manipulators = [XOriented3DOF3LinkArm(links[i], joints[i], origins[i]) for i in range(len(joints))]
             engine = IKEngine(manipulators)
         case _:
             joints = np.array([[0,0,0], [0,0,0], [0,0,0], [0,0,0]])
@@ -291,7 +308,7 @@ def main(model:str):
     ani = animation.FuncAnimation(fig=fig, func=functools.partial(updatePlot, ikEngine=engine, targets=targets, orientations=orientations, animationEnabled=animationEnabled), frames=frames, interval=interval, repeat=False)
 
     if save_animation:
-        filepath = "animation.gif" 
+        filepath = "ssrt_position.gif" 
         writergif = animation.PillowWriter(fps=1/(interval/1000))
         ani.save(filepath, writer=writergif)
     else:

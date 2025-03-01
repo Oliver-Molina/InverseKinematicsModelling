@@ -98,6 +98,88 @@ class SSRTArm2StageDirect(Manipulator):
 
         [x,y,z] = target - L3_desired.T.flatten()
         
+        theta3 = 2*math.pi - math.acos((x**2 + y**2 + z**2 - l1**2 - l2**2)/(2*l1*l2))
+        theta2 = math.atan2(z, math.sqrt(x**2 + y**2)) - math.atan2(l1 + l2*math.cos(theta3), -l2*math.sin(theta3))
+        theta1 = math.atan2(-x, y)
+
+        angles = [theta1, theta2, theta3]
+
+        # Update theta1 -> theta3
+        for i in range(len(angles)):
+            [j,k] = self.joint_map[i]
+            self.DH_params[j,k] = angles[i]
+
+        for i in range(len(angles), len(self.joint_map)):
+            [j,k] = self.joint_map[i]
+            angles.append(self.DH_params[j,k])
+
+
+        # Compute theta4 -> theta6 to match desired orientation
+
+        # Equate current L3 vector based on theta1->6 (with 1->3 known) with desired L3 vector
+        # Rot(1 -> 3) * L3_theta = Rot_desired * L3_origin
+        # Solve for L3_theta
+        # L3_theta = Rot(1 ->3)^-1 * Rot_desired * L3_origin
+        # Inverse of rotational matrix is simply its transpose
+        # L3_theta = Rot(1 ->3)^T * Rot_desired * L3_origin
+        # Divide by l3 to normalize and solve for angles
+
+        Rot_1_3 = my_trans_EF_eval(self.DH_params[:3])[:3, :3]
+        
+        L3_theta = np.transpose(Rot_1_3) @ L3_desired / l3
+
+        [Vx, Vy, Vz] = L3_theta
+
+        cosTheta5 = Vz
+        sinTheta5 = math.sqrt(1 - (Vz)**2)
+
+        cosTheta4 = -Vy/sinTheta5
+        sinTheta4 = Vx/sinTheta5
+
+        theta4 = math.atan2(sinTheta4, cosTheta4)
+        theta5 = math.atan2(sinTheta5, cosTheta5)
+
+        angles[3] = theta4
+        angles[4] = theta5
+
+
+        # Update theta1 -> theta3
+        for i in range(len(angles)):
+            [j,k] = self.joint_map[i]
+            self.DH_params[j,k] = angles[i]
+
+        transform = my_trans_EF_eval(self.DH_params)
+
+        pos = transform[:3, 3]
+        #print(pos)
+        #print(self.getUpdatedJointOrientations()[-1])
+
+
+        return angles
+
+    def UpdateTarget(self, target=None):
+        # If no target return current angles
+        if target is None:
+            angles = []
+
+            for [i,j] in self.joint_map:
+                angles.append(self.DH_params[i][j])
+            return np.array(angles)
+        
+        orientation = self.getUpdatedJointOrientations()[-1]
+        
+        
+        # Solve for theta1 -> theta3 
+        [l1, l2, l3] = self.links
+        # link3 deired vector
+        L3_origin = np.atleast_2d([0, 0, l3]).T
+
+        Rot_desired = rotation_matrix_zyx(orientation)
+
+        L3_desired = Rot_desired @ L3_origin
+
+        [x,y,z] = target - L3_desired.T.flatten()
+        
         theta3 = math.acos((x**2 + y**2 + z**2 - l1**2 - l2**2)/(2*l1*l2))
         theta2 = math.atan2(z, math.sqrt(x**2 + y**2)) - math.atan2(l1 + l2*math.cos(theta3), -l2*math.sin(theta3))
         theta1 = math.atan2(-x, y)
@@ -156,6 +238,95 @@ class SSRTArm2StageDirect(Manipulator):
 
 
         return angles
+
+    def UpdateOrientation(self, orientation=None, FixWristPosition=False):
+        if orientation is None:
+            orientation = self.getUpdatedJointOrientations()[-1]
+        
+        
+        # Solve for theta1 -> theta3 
+        [l1, l2, l3] = self.links
+        # link3 deired vector
+        L3_origin = np.atleast_2d([0, 0, l3]).T
+
+        Rot_desired = rotation_matrix_zyx(orientation)
+
+        L3_desired = Rot_desired @ L3_origin
+
+
+        angles = None
+        if FixWristPosition:              
+            angles = self.getUpdatedJointAngles()
+        else:
+            [x,y,z] = self.getUpdatedJointPositions()[-1] - L3_desired.T.flatten()
+            
+            theta3 = math.acos((x**2 + y**2 + z**2 - l1**2 - l2**2)/(2*l1*l2))
+            theta2 = math.atan2(z, math.sqrt(x**2 + y**2)) - math.atan2(l1 + l2*math.cos(theta3), -l2*math.sin(theta3))
+            theta1 = math.atan2(-x, y)
+
+            angles = [theta1, theta2, theta3]
+
+            # Update theta1 -> theta3
+            for i in range(len(angles)):
+                [j,k] = self.joint_map[i]
+                self.DH_params[j,k] = angles[i]
+
+            for i in range(len(angles), len(self.joint_map)):
+                [j,k] = self.joint_map[i]
+                angles.append(self.DH_params[j,k])
+
+        # Compute theta4 -> theta6 to match desired orientation
+
+        # Equate current L3 vector based on theta1->6 (with 1->3 known) with desired L3 vector
+        # L3_current = Rot(1 ->3) * L3_theta
+        # L3_desired = Rot_desired * L3_origin
+        # Rot(1 -> 3) * L3_theta = Rot_desired * L3_origin
+        # Solve for L3_theta
+        # L3_theta = Rot(1 ->3)^-1 * Rot_desired * L3_origin
+        # Inverse of rotational matrix is simply its transpose
+        # L3_theta = Rot(1 ->3)^T * Rot_desired * L3_origin
+        Rot_1_3 = my_trans_EF_eval(self.DH_params[:3])[:3, :3]
+        L3_theta = np.transpose(Rot_1_3) @ L3_desired
+
+        # Divide by L3 magnitude (l3) to normalize
+        # The resulting vector represents the portion of l3 within each axis i.e
+
+        [Vx, Vy, Vz] = L3_theta
+
+        cosTheta5 = Vz
+        sinTheta5 = math.sqrt(1 - (Vz)**2)
+
+        cosTheta4 = -Vy/sinTheta5
+        sinTheta4 = Vx/sinTheta5
+
+        theta4 = math.atan2(sinTheta4, cosTheta4)
+        theta5 = math.atan2(sinTheta5, cosTheta5)
+
+        angles[3] = theta4
+        angles[4] = theta5
+
+        # Update theta1 -> theta3
+        for i in range(len(angles)):
+            [j,k] = self.joint_map[i]
+            self.DH_params[j,k] = angles[i]
+
+        transform = my_trans_EF_eval(self.DH_params)
+
+        #TODO solve for theta6 (the wrist rotation)
+
+        pos = transform[:3, 3]
+
+        Rot_curr = transform[:3, :3]
+        print("Start")
+        print(Rot_curr)
+        print(Rot_desired)
+
+        #print(pos)
+        #print(self.getUpdatedJointOrientations()[-1])
+
+
+        return angles
+
 
     def getUpdatedJointPositions(self, angles=None):
         # Update angles
