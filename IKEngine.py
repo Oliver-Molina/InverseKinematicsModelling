@@ -3,7 +3,7 @@ import math
 from abc import ABC, abstractmethod
 
 class Manipulator:
-    REQUIRED_METHODS = ['getUpdatedJointAngles', 'getUpdatedJointPositions', 'getUpdatedJointOrientations', 'getManipulatorOrigin']
+    REQUIRED_METHODS = ['getUpdatedJointAngles', 'getUpdatedJointPositions', 'getUpdatedJointOrientations', 'getManipulatorOrigin', 'getTargetPosition', 'getTargetOrientation']
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         for method in cls.REQUIRED_METHODS:

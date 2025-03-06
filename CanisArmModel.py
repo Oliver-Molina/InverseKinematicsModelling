@@ -95,3 +95,9 @@ class XOriented3DOF3LinkArm(Manipulator):
 
     def getManipulatorOrigin(self):
         return self.origin
+    
+    def getTargetPosition(self):
+        return self.getUpdatedJointPositions()[-1]
+    
+    def getTargetOrientation(self):
+        return self.getUpdatedJointOrientations()[-1]

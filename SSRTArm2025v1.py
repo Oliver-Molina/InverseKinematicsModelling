@@ -102,6 +102,11 @@ class SSRTArm2025v1():
         # Define Joint Mapping
         self.joint_map = np.array([[0, 0], [1, 1], [2, 1], [3, 0], [4, 1], [5, 0]])
 
+        self.target_position = np.array([0.0, 0.0, np.sum(link_lengths)])
+
+        self.target_orientation = np.array([0.0, 0.0, 0.0])
+
+
     # Returns a list of positions for each joint and the end effector
     def GetPositions(self, current_angles=None):
         # Compute all positions using forward Kinematics
@@ -193,19 +198,15 @@ class SSRTArm2025v1():
         return evaulate_end_effector(DH_params)
 
     # Method for updating the positon of the arm while maintaining the current orientation of the wrist
-    def GeneratePosition(self, new_position, current_angles=None):
-        # Use stored angles if no input specified
-        if current_angles is None:
-            current_angles = self.GetAngles()
+    def GeneratePosition(self, new_position, current_orientation):
+        current_angles = np.zeros(self.NUM_OF_JOINTS)
         
-        # Step 1: Calculate wrist position (theta1 -> theta3) by subtracting the claw vector from the target position
-        orientation = self.GetOrientations(current_angles)[-1]
-        
+        # Step 1: Calculate wrist position (theta1 -> theta3) by subtracting the claw vector from the target position        
         [l1, l2, l3] = self.links
         
         claw_default = np.atleast_2d([0, 0, l3]).T
 
-        Rot_desired = rotation_matrix_zyx(orientation)
+        Rot_desired = rotation_matrix_zyx(current_orientation)
 
         claw_desired = Rot_desired @ claw_default
 
@@ -223,7 +224,7 @@ class SSRTArm2025v1():
         current_angles[2] = theta3
 
         # Step 3: Fix orientation by correcting claw angles
-        return self.GenerateOrientation(orientation, current_angles)
+        return self.GenerateOrientation(current_orientation, current_angles)
 
     # Method for updating the orientation of the arm while keeping the current position of the wrist
     def GenerateOrientation(self, new_orientation, current_angles=None):
@@ -285,19 +286,25 @@ class SSRTArm2025v1():
     # if new_orientation is None the wrist will maintain its current orientation
     # if both are None the the current angles will be returned
     def GenerateJointAngles(self, new_position=None, new_orientation=None):
+        angles = np.zeros([self.NUM_OF_JOINTS])
+
         if new_position is None and new_orientation is None:
-            return self.GetAngles()
+            angles =  self.GetAngles()
         elif new_position is None:
-            return self.GenerateOrientation(new_orientation)
+            angles =  self.GenerateOrientation(new_orientation)
         elif new_orientation is None:
-            return self.GeneratePosition(new_position)
+            angles =  self.GeneratePosition(new_position, self.target_orientation)
         else:
             angles = self.GenerateOrientation(new_orientation)
-            angles = self.GeneratePosition(new_position, angles)
-            return angles
+            angles = self.GeneratePosition(new_position, new_orientation)
+        
+        if new_position is not None:
+            self.target_position = new_position
+        if new_orientation is not None:
+            self.target_orientation = new_orientation
+        return angles
 
-class SSRTArmWrapper(SSRTArm2025v1, Manipulator):
-
+class SSRTArmWrapper(SSRTArm2025v1, Manipulator): 
     def getUpdatedJointAngles(self, target=None, orientation=None):
         try:
             angles = self.GenerateJointAngles(target, orientation)
@@ -320,11 +327,8 @@ class SSRTArmWrapper(SSRTArm2025v1, Manipulator):
     def getManipulatorOrigin(self):
         return np.array([0,0,0])
     
-
-# With orientation disabled the engine jitters
-
-# Any time we calculate ourself based off ourself we open the 
-# door to jitter. This is a major problem
-# I'm not sure what to do about this just yet
-# If there is more than one solution causing jitter, the "simple"
-# fix should be to always only take the solution with the minimal change
+    def getTargetPosition(self):
+        return self.target_position
+    
+    def getTargetOrientation(self):
+        return self.target_orientation
