@@ -32,8 +32,6 @@ class IKEngine:
 
             manipulator_points = manipulator.getUpdatedJointPositions(manipulator_angles)
 
-            manipulator_orientations = manipulator.getUpdatedJointOrientations(None)
-
             #print(manipulator_orientations * 180/math.pi)
             
             manipulator_skeleton = []
@@ -52,4 +50,17 @@ class IKEngine:
         skeleton = skeleton.reshape(-1, 2, 3)
         return skeleton
 
+    def getEndEffectorTargetPositions(self):
+        positions = []
+        for manipulator in self.manipulators:
+            positions.append(manipulator.getTargetPosition())
+        
+        return np.array(positions)
+    
+    def getEndEffectorTargetOrientations(self):
+        orientations = []
+        for manipulator in self.manipulators:
+            orientations.append(manipulator.getTargetOrientation())
+        
+        return np.array(orientations)
     

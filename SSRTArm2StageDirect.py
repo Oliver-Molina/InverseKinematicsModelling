@@ -67,6 +67,11 @@ def rotation_matrix_zyx(orientation:list):
 def normalize_angle(angle):
     return (angle + np.pi) % (2 * np.pi) - np.pi
 
+def safe_atan2(y, x):
+    if y == 0 and x == 0:
+        return 0.0
+    return math.atan2(y, x)
+
 class SSRTArm2StageDirect(Manipulator):
     def __init__(self, links, origin, DH_params, joint_map):
         self.links = links
@@ -75,17 +80,19 @@ class SSRTArm2StageDirect(Manipulator):
         self.joint_map = joint_map
 
     def getUpdatedJointAngles(self, target=None, orientation=None):
-        # If no target return current angles
-        if target is None:
+        # If no target or orientation return current angles
+        if target is None and orientation is None:
             angles = []
 
             for [i,j] in self.joint_map:
                 angles.append(self.DH_params[i][j])
             return np.array(angles)
-        
-        if orientation is None:
+        elif target is None: # if no target just set the orientation of the end effector while locking the wrist position
+            return self.UpdateOrientation(orientation)
+        elif orientation is None: # if no orientation keep it fixed and just move the end effector
             orientation = self.getUpdatedJointOrientations()[-1]
-        
+
+        self.UpdateOrientation(orientation)
         
         # Solve for theta1 -> theta3 
         [l1, l2, l3] = self.links
@@ -239,9 +246,14 @@ class SSRTArm2StageDirect(Manipulator):
 
         return angles
 
-    def UpdateOrientation(self, orientation=None, FixWristPosition=False):
+    def UpdateOrientation(self, orientation=None):
         if orientation is None:
-            orientation = self.getUpdatedJointOrientations()[-1]
+            return self.getUpdatedJointAngles()
+
+        angles = []
+
+        for [i,j] in self.joint_map:
+            angles.append(self.DH_params[i][j])
         
         
         # Solve for theta1 -> theta3 
@@ -253,80 +265,85 @@ class SSRTArm2StageDirect(Manipulator):
 
         L3_desired = Rot_desired @ L3_origin
 
-
-        angles = None
-        if FixWristPosition:              
-            angles = self.getUpdatedJointAngles()
-        else:
-            [x,y,z] = self.getUpdatedJointPositions()[-1] - L3_desired.T.flatten()
-            
-            theta3 = math.acos((x**2 + y**2 + z**2 - l1**2 - l2**2)/(2*l1*l2))
-            theta2 = math.atan2(z, math.sqrt(x**2 + y**2)) - math.atan2(l1 + l2*math.cos(theta3), -l2*math.sin(theta3))
-            theta1 = math.atan2(-x, y)
-
-            angles = [theta1, theta2, theta3]
-
-            # Update theta1 -> theta3
-            for i in range(len(angles)):
-                [j,k] = self.joint_map[i]
-                self.DH_params[j,k] = angles[i]
-
-            for i in range(len(angles), len(self.joint_map)):
-                [j,k] = self.joint_map[i]
-                angles.append(self.DH_params[j,k])
-
         # Compute theta4 -> theta6 to match desired orientation
 
         # Equate current L3 vector based on theta1->6 (with 1->3 known) with desired L3 vector
-        # L3_current = Rot(1 ->3) * L3_theta
-        # L3_desired = Rot_desired * L3_origin
         # Rot(1 -> 3) * L3_theta = Rot_desired * L3_origin
         # Solve for L3_theta
         # L3_theta = Rot(1 ->3)^-1 * Rot_desired * L3_origin
         # Inverse of rotational matrix is simply its transpose
         # L3_theta = Rot(1 ->3)^T * Rot_desired * L3_origin
-        Rot_1_3 = my_trans_EF_eval(self.DH_params[:3])[:3, :3]
-        L3_theta = np.transpose(Rot_1_3) @ L3_desired
+        # Divide by l3 to normalize and solve for angles
 
-        # Divide by L3 magnitude (l3) to normalize
-        # The resulting vector represents the portion of l3 within each axis i.e
+        Rot_1_3 = my_trans_EF_eval(self.DH_params[:3])[:3, :3]
+        
+        L3_theta = np.transpose(Rot_1_3) @ L3_desired / l3
 
         [Vx, Vy, Vz] = L3_theta
 
         cosTheta5 = Vz
         sinTheta5 = math.sqrt(1 - (Vz)**2)
 
-        cosTheta4 = -Vy/sinTheta5
-        sinTheta4 = Vx/sinTheta5
+        if abs(sinTheta5) == 0:
+            theta4 = 0
+            theta5 = 0
+        else:
+            cosTheta4 = -Vy/sinTheta5
+            sinTheta4 = Vx/sinTheta5
 
-        theta4 = math.atan2(sinTheta4, cosTheta4)
-        theta5 = math.atan2(sinTheta5, cosTheta5)
+            theta4 = math.atan2(sinTheta4, cosTheta4)
+            theta5 = math.atan2(sinTheta5, cosTheta5)
 
         angles[3] = theta4
         angles[4] = theta5
+
 
         # Update theta1 -> theta3
         for i in range(len(angles)):
             [j,k] = self.joint_map[i]
             self.DH_params[j,k] = angles[i]
 
-        transform = my_trans_EF_eval(self.DH_params)
+        transform = my_trans_EF_eval(self.DH_params[:5])
 
         #TODO solve for theta6 (the wrist rotation)
 
         pos = transform[:3, 3]
 
-        Rot_curr = transform[:3, :3]
         print("Start")
-        print(Rot_curr)
-        print(Rot_desired)
+        Rot_curr = transform[:3, :3]
+        # print("Rot_curr")
+        # print(Rot_curr)
+        # print("Rot_desired")
+        # print(Rot_desired)
+        # print(pos)
+        # print(self.getUpdatedJointOrientations()[-1])
 
-        #print(pos)
-        #print(self.getUpdatedJointOrientations()[-1])
+        Rot_required = np.transpose(Rot_curr) @ Rot_desired
+        print(Rot_required)
 
+        theta6 = math.atan2(Rot_required[1,0], Rot_required[0,0])
+
+        angles[5] = theta6
+
+        # Update theta1 -> theta3
+        for i in range(len(angles)):
+            [j,k] = self.joint_map[i]
+            self.DH_params[j,k] = angles[i]
+
+        #print([angle / math.pi * 180 for angle in angles[3:]])
+        # print(orientation)
+        print(rotation_matrix_zyx(orientation))
+        
+        # print(self.getUpdatedJointOrientations()[-1])
+        print(rotation_matrix_zyx(self.getUpdatedJointOrientations()[-1]))
+
+        # if not hasattr(self, 'count'):
+        #     self.count = 0
+        # self.count +=1
+        # if self.count >= 0:
+        #     exit(0)
 
         return angles
-
 
     def getUpdatedJointPositions(self, angles=None):
         # Update angles
@@ -350,6 +367,13 @@ class SSRTArm2StageDirect(Manipulator):
             point = current_transform[:3, 3]
             point = point.reshape(3)
             P.append(point)
+
+        trans = np.eye(4)
+        trans[0, 3] = 0.1
+        current_transform = current_transform @ trans
+        point = current_transform[:3, 3]
+        point = point.reshape(3)
+        P.append(point)
 
         return P
 
@@ -383,3 +407,11 @@ class SSRTArm2StageDirect(Manipulator):
 
     def getManipulatorOrigin(self):
         return self.origin
+    
+
+# I want the Engine to be stateless, it should take in arguments for the current state and the desired state.
+# Right now the model is operating on a list of DH parameters that describe the model. The logic does not however work generically.
+# I think this is okay but it may be possible to optimize and clarify this setup.
+# I should just start with creating a finalized model here.
+# We cannot actually define the internal structure of the SSRT arm so the initializer should accept only the variable structural elements.
+# Upon initilization we should accept a list of link length, initial joint positions, and joint limits. Internally we can store a joint map.

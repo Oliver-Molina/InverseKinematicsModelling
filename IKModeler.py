@@ -7,12 +7,41 @@ from IKEngine import *
 from CanisArmModel import *
 from SSRTArm import *
 from SSRTArm2StageDirect import *
+from SSRTArm2025v1 import SSRTArmWrapper
 import sys
 
 frames = 1000
 interval = 50
 
 save_animation = False
+
+# Initialize targets and orientations
+engine = None
+targets = np.array([None])        # x, y, z
+orientations = np.array([None])   # thetax, thetay, thetaz
+target_step = 0.01  # Increment/decrement step
+orientation_step = math.pi/50
+targets_enabled = False
+orientations_enabled = False
+
+
+
+# Key mapping
+key_mappings = {
+    "1": (True, 0, target_step),       # Increase X
+    "2": (True, 1, target_step),       # Increase Y
+    "3": (True, 2, target_step),       # Increase Z
+    "4": (False, 0, orientation_step),  # Increase ThetaX
+    "5": (False, 1, orientation_step),  # Increase ThetaY
+    "6": (False, 2, orientation_step),  # Increase ThetaZ
+    
+    "!": (True, 0, -target_step),      # Decrease X (Shift+1)
+    "@": (True, 1, -target_step),      # Decrease Y (Shift+2)
+    "#": (True, 2, -target_step),      # Decrease Z (Shift+3)
+    "$": (False, 0, -orientation_step), # Decrease ThetaX (Shift+4)
+    "%": (False, 1, -orientation_step), # Decrease ThetaY (Shift+5)
+    "^": (False, 2, -orientation_step)  # Decrease ThetaZ (Shift+6)
+}
 
 fig = plt.figure()
 ax = fig.add_subplot(projection='3d')
@@ -24,109 +53,67 @@ def get_colour(i):
     colours = ['b', 'g', 'r', 'c', 'm', 'y']
     return colours[i % len(colours)]
 
-# def getCanisSkeleton(frame):
-#     # Animate Initial Values
-
-#     NUM_OF_LEGS = 4
-
-#     skeleton = np.array([[]])
-
-#     BODY_WIDTH = 1
-
-#     BODY_LENGTH = 2.5
-
-#     leg_origins = np.array([[BODY_LENGTH/2,BODY_WIDTH/2, 0], 
-#                             [BODY_LENGTH/2,-BODY_WIDTH/2, 0], 
-#                             [-BODY_LENGTH/2,BODY_WIDTH/2, 0], 
-#                             [-BODY_LENGTH/2,-BODY_WIDTH/2, 0]])
+def key_handler(event):
+    global targets, orientations, engine, targets_enabled, orientations_enabled
     
-#     # add frame of body to skeleton
-#     skeleton = np.append(skeleton, [leg_origins[0], leg_origins[1]])
-#     skeleton = np.append(skeleton, [leg_origins[1], leg_origins[3]])
-#     skeleton = np.append(skeleton, [leg_origins[3], leg_origins[2]])
-#     skeleton = np.append(skeleton, [leg_origins[2], leg_origins[0]])
+    val = 0
+    if event.key in key_mappings:
+        is_target, idx, delta = key_mappings[event.key]
 
-#     for i in range(NUM_OF_LEGS):
-#         desiredx = x + 0.5 * math.cos(2*math.pi*frame/interval - i*math.pi/NUM_OF_LEGS)
-#         desiredy = 1 #y if i % 2 == 0 else -y #+ 0.5 * math.sin(2*math.pi*frame/interval)
-#         desiredz = z + 0.5 * math.sin(2*math.pi*frame/interval - i*math.pi/NUM_OF_LEGS)
+        if is_target:
+            for target in [t for t in targets if t is not None]:
+                target[idx] += delta
+        else:
+            for orientation in [o for o in orientations if o is not None]:
+                orientation[idx] += delta
 
-#         position = np.array([desiredx, desiredy, desiredz])
+        print(f"Target: {targets} Orientation: {orientations}")
+            
+    elif event.key == "7": # Toggle Target
+        targets_enabled = not targets_enabled
+        if targets_enabled:
+            targets = np.array(engine.getEndEffectorTargetPositions())
+        else:
+            targets = np.full(len(targets), None, dtype=object)
 
-#         leg_skeleton = update3Joint3DArmX(frame, position)
+        print("Target " + ("enabled" if targets_enabled else "disabled") + ".")
 
-#         # translate each set of joints to the leg origin
-#         for j in range(len(leg_skeleton)):
-#             for k in range(len(leg_skeleton[j])):
-#                 leg_skeleton[j][k] = np.add(leg_skeleton[j][k], leg_origins[i])
-        
 
-#         # add legs to skeleton
-#         skeleton = np.append(skeleton, leg_skeleton)
+    elif event.key == "8":  # Toggle orientations between None and default
+        orientations_enabled = not orientations_enabled
+        if orientations_enabled:
+            orientations = np.array(engine.getEndEffectorTargetOrientations())
+        else:
+            orientations = np.full(len(orientations), None, dtype=object)
 
-#     skeleton = skeleton.reshape(-1, 2, 3)
-#     return skeleton
+        print("Orientation " + ("enabled" if orientations_enabled else "disabled") + ".")
 
-# def getCanisSkeleton(frame):
-#     # Animate Initial Values
-
-#     NUM_OF_LEGS = 4
-
-#     skeleton = np.array([[]])
-
-#     BODY_WIDTH = 1
-
-#     BODY_LENGTH = 2.5
-
-#     leg_origins = np.array([[BODY_LENGTH/2,BODY_WIDTH/2, 0], 
-#                             [BODY_LENGTH/2,-BODY_WIDTH/2, 0], 
-#                             [-BODY_LENGTH/2,BODY_WIDTH/2, 0], 
-#                             [-BODY_LENGTH/2,-BODY_WIDTH/2, 0]])
-    
-#     # add frame of body to skeleton
-#     skeleton = np.append(skeleton, [leg_origins[0], leg_origins[1]])
-#     skeleton = np.append(skeleton, [leg_origins[1], leg_origins[3]])
-#     skeleton = np.append(skeleton, [leg_origins[3], leg_origins[2]])
-#     skeleton = np.append(skeleton, [leg_origins[2], leg_origins[0]])
-
-#     for i in range(NUM_OF_LEGS):
-#         desiredx = x + 0.5 * math.cos(2*math.pi*frame/interval - i*math.pi/NUM_OF_LEGS)
-#         desiredy = 1 #y if i % 2 == 0 else -y #+ 0.5 * math.sin(2*math.pi*frame/interval)
-#         desiredz = z + 0.5 * math.sin(2*math.pi*frame/interval - i*math.pi/NUM_OF_LEGS)
-
-#         position = np.array([desiredx, desiredy, desiredz])
-
-#         leg_skeleton = update3Joint3DArmX(frame, position)
-
-#         # translate each set of joints to the leg origin
-#         for j in range(len(leg_skeleton)):
-#             for k in range(len(leg_skeleton[j])):
-#                 leg_skeleton[j][k] = np.add(leg_skeleton[j][k], leg_origins[i])
-        
-
-#         # add legs to skeleton
-#         skeleton = np.append(skeleton, leg_skeleton)
-
-#     skeleton = skeleton.reshape(-1, 2, 3)
-#     return skeleton
-
-def updatePlot(frame, ikEngine, targets, orientations, animationEnabled):
+def updatePlot(frame, animationEnabled):
+    global engine, targets, orientations
     animatedTargets = targets
     animatedOrientations = orientations
+
     if animationEnabled:
         for i in range(animatedTargets.shape[0]):
             offset = math.pi/2 * i
             desiredx = 0.3 * math.cos(2*math.pi*frame/interval + offset) / (2*math.pi)
             desiredy = 0.3 * math.sin(2*math.pi*frame/interval + offset) / (2*math.pi)
             desiredz = 0.0 * math.sin(2*math.pi*frame/interval + offset) / (2*math.pi)
-            animatedTargets[i] = np.add(animatedTargets[i], [desiredx, desiredy, desiredz])
+            animatedTargets[i] = np.add(animatedTargets[i], [desiredx, desiredy, desiredz]) if animatedTargets[i] is not None else None
 
-            #animatedOrientations[i] = [2*math.pi*frame/interval for j in range(3)]
+        for i in range(animatedOrientations.shape[0]):
+            desiredxrot = 1 * math.sin(2*math.pi*frame/interval + offset) * math.pi
+            desiredyrot = 0 *math.sin(2*math.pi*frame/interval + offset) * math.pi
+            desiredzrot = 0 * math.sin(2*math.pi*frame/interval + offset) * math.pi
+            animatedOrientations[i] = [desiredxrot, desiredyrot, desiredzrot]
+
+        # for i in range(animatedOrientations.shape[0]):
+        #     animatedOrientations[i] = [2*math.pi*frame/interval for j in range(3)]
 
     iterations = 10
-    skeleton = ikEngine.getSkeleton(targets=animatedTargets, orientations=orientations) # Adjacency list of joint connections
+    skeleton = engine.getSkeleton(targets=animatedTargets, orientations=orientations) # Adjacency list of joint connections
     for i in range(iterations):
-        skeleton = ikEngine.getSkeleton(targets=animatedTargets, orientations=orientations) # Adjacency list of joint connections
+        skeleton = engine.getSkeleton(targets=animatedTargets, orientations=orientations) # Adjacency list of joint connections
     
     #print(desiredx - skeleton[-1][-1][0], desiredy - skeleton[-1][-1][1], desiredz - skeleton[-1][-1][2])
     # Wipe old plot
@@ -138,16 +125,13 @@ def updatePlot(frame, ikEngine, targets, orientations, animationEnabled):
             print("Incorrect element length")
         ax.plot([adjacency[0][0], adjacency[1][0]], [adjacency[0][1], adjacency[1][1]], [adjacency[0][2], adjacency[1][2]], color=get_colour(i))
 
-
 def on_close(event):
     exit()
 
 def main(model:str):
+    global targets, orientations, engine
     joints = np.array([])
     links = np.array([])
-    targets = np.array([None])
-    orientations = np.array([None])
-    engine = None
 
     match model:
         case "0":
@@ -195,13 +179,13 @@ def main(model:str):
             joints = np.array([[0*math.pi/2,
                                 0*math.pi/2,
                                 0*math.pi/2, 
-                                1*math.pi/2, 
-                                1*math.pi/2, 
-                                1*math.pi/2]])
+                                0*math.pi/2, 
+                                0*math.pi/2, 
+                                0*math.pi/2]])
             
             links = np.array([[0.4,0.3, 0.2]])
-            targets = np.array([[0.2, -0.2, 0.2]])
-            orientations = np.array([[0*math.pi/4, 2*math.pi/4,0*math.pi/4]])
+            #targets = np.array([[0.2, -0.2, 0.2]])
+            orientations = np.array([[1*math.pi/4, 1*math.pi/4,1*math.pi/4]])
             origins = np.array([[0,0,0]])
 
             DH_params = np.array([[0, 0, 0, 0],
@@ -217,7 +201,7 @@ def main(model:str):
                 [j,k] = joint_map[i]
                 DH_params[j, k] = joint
 
-            animationEnabled = True
+            animationEnabled = False
             manipulators = [SSRTArm2StageDirect(links[0], origins[0], DH_params, joint_map)]
             engine = IKEngine(manipulators)
         case "2":
@@ -234,6 +218,19 @@ def main(model:str):
             animationEnabled = True
             manipulators = [XOriented3DOF3LinkArm(links[i], joints[i], origins[i]) for i in range(len(joints))]
             engine = IKEngine(manipulators)
+        case "3":
+            joints = np.array([[0*math.pi/2,
+                                0*math.pi/2,
+                                0*math.pi/2, 
+                                0*math.pi/2, 
+                                0*math.pi/2, 
+                                0*math.pi/2]])
+            
+            links = np.array([[0.4,0.3, 0.2]])
+            animationEnabled = False
+            manipulators = [SSRTArmWrapper(links[0], joints[0], [], [])]
+            engine = IKEngine(manipulators)
+        
         case _:
             joints = np.array([[0,0,0], [0,0,0], [0,0,0], [0,0,0]])
             links = np.array([[0.3,1,1], [0.3,1,1], [0.3,1,1], [0.3,1,1]])
@@ -304,8 +301,9 @@ def main(model:str):
     ax.set_zlim(-maxmag, maxmag)
 
     fig.canvas.mpl_connect('close_event', on_close)
+    fig.canvas.mpl_connect("key_press_event", key_handler)
 
-    ani = animation.FuncAnimation(fig=fig, func=functools.partial(updatePlot, ikEngine=engine, targets=targets, orientations=orientations, animationEnabled=animationEnabled), frames=frames, interval=interval, repeat=False)
+    ani = animation.FuncAnimation(fig=fig, func=functools.partial(updatePlot, animationEnabled=animationEnabled), frames=frames, interval=interval, repeat= not save_animation)
 
     if save_animation:
         filepath = "ssrt_position.gif" 
