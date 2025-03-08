@@ -106,7 +106,6 @@ class SSRTArm2025v1():
 
         self.target_orientation = np.array([0.0, 0.0, 0.0])
 
-
     # Returns a list of positions for each joint and the end effector
     def GetPositions(self, current_angles=None):
         # Compute all positions using forward Kinematics
@@ -176,7 +175,8 @@ class SSRTArm2025v1():
             self.DH_params[i][j] = new_angles[joint_index]
 
         return True
-    
+
+    # Method for generating DH parameter table from input angles
     def GenerateDHParams(self, current_angles=None):
         if current_angles is None:
             current_angles = self.GetAngles()
@@ -190,7 +190,6 @@ class SSRTArm2025v1():
 
         return DH_params
         
-
     # Method for evaluating arm transform up to the joint_n where n is the number of angles supplied
     def EvaluateTransforms(self, current_angles=None):
         DH_params = self.GenerateDHParams(current_angles)
@@ -295,7 +294,6 @@ class SSRTArm2025v1():
         elif new_orientation is None:
             angles =  self.GeneratePosition(new_position, self.target_orientation)
         else:
-            angles = self.GenerateOrientation(new_orientation)
             angles = self.GeneratePosition(new_position, new_orientation)
         
         if new_position is not None:

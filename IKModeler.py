@@ -6,7 +6,6 @@ import functools
 from IKEngine import *
 from CanisArmModel import *
 from SSRTArm import *
-from SSRTArm2StageDirect import *
 from SSRTArm2025v1 import SSRTArmWrapper
 import sys
 
@@ -17,27 +16,27 @@ save_animation = False
 
 # Initialize targets and orientations
 engine = None
-targets = np.array([None])        # x, y, z
-orientations = np.array([None])   # thetax, thetay, thetaz
-target_step = 0.01  # Increment/decrement step
+target_positions = np.array([None])        # x, y, z
+target_orientations = np.array([None])   # thetax, thetay, thetaz
+position_step = 0.01  # Increment/decrement step
 orientation_step = math.pi/50
-targets_enabled = False
+positions_enabled = False
 orientations_enabled = False
 
 
 
 # Key mapping
 key_mappings = {
-    "1": (True, 0, target_step),       # Increase X
-    "2": (True, 1, target_step),       # Increase Y
-    "3": (True, 2, target_step),       # Increase Z
+    "1": (True, 0, position_step),       # Increase X
+    "2": (True, 1, position_step),       # Increase Y
+    "3": (True, 2, position_step),       # Increase Z
     "4": (False, 0, orientation_step),  # Increase ThetaX
     "5": (False, 1, orientation_step),  # Increase ThetaY
     "6": (False, 2, orientation_step),  # Increase ThetaZ
     
-    "!": (True, 0, -target_step),      # Decrease X (Shift+1)
-    "@": (True, 1, -target_step),      # Decrease Y (Shift+2)
-    "#": (True, 2, -target_step),      # Decrease Z (Shift+3)
+    "!": (True, 0, -position_step),      # Decrease X (Shift+1)
+    "@": (True, 1, -position_step),      # Decrease Y (Shift+2)
+    "#": (True, 2, -position_step),      # Decrease Z (Shift+3)
     "$": (False, 0, -orientation_step), # Decrease ThetaX (Shift+4)
     "%": (False, 1, -orientation_step), # Decrease ThetaY (Shift+5)
     "^": (False, 2, -orientation_step)  # Decrease ThetaZ (Shift+6)
@@ -54,44 +53,43 @@ def get_colour(i):
     return colours[i % len(colours)]
 
 def key_handler(event):
-    global targets, orientations, engine, targets_enabled, orientations_enabled
+    global target_positions, target_orientations, engine, positions_enabled, orientations_enabled
     
-    val = 0
     if event.key in key_mappings:
         is_target, idx, delta = key_mappings[event.key]
 
         if is_target:
-            for target in [t for t in targets if t is not None]:
+            for target in [t for t in target_positions if t is not None]:
                 target[idx] += delta
         else:
-            for orientation in [o for o in orientations if o is not None]:
+            for orientation in [o for o in target_orientations if o is not None]:
                 orientation[idx] += delta
 
-        print(f"Target: {targets} Orientation: {orientations}")
+        print(f"Target: {target_positions} Orientation: {target_orientations}")
             
     elif event.key == "7": # Toggle Target
-        targets_enabled = not targets_enabled
-        if targets_enabled:
-            targets = np.array(engine.getEndEffectorTargetPositions())
+        positions_enabled = not positions_enabled
+        if positions_enabled:
+            target_positions = np.array(engine.getEndEffectorTargetPositions())
         else:
-            targets = np.full(len(targets), None, dtype=object)
+            target_positions = np.full(len(target_positions), None, dtype=object)
 
-        print("Target " + ("enabled" if targets_enabled else "disabled") + ".")
+        print("Target " + ("enabled" if positions_enabled else "disabled") + ".")
 
 
     elif event.key == "8":  # Toggle orientations between None and default
         orientations_enabled = not orientations_enabled
         if orientations_enabled:
-            orientations = np.array(engine.getEndEffectorTargetOrientations())
+            target_orientations = np.array(engine.getEndEffectorTargetOrientations())
         else:
-            orientations = np.full(len(orientations), None, dtype=object)
+            target_orientations = np.full(len(target_orientations), None, dtype=object)
 
         print("Orientation " + ("enabled" if orientations_enabled else "disabled") + ".")
 
 def updatePlot(frame, animationEnabled):
-    global engine, targets, orientations
-    animatedTargets = targets
-    animatedOrientations = orientations
+    global engine, target_positions, target_orientations
+    animatedTargets = target_positions
+    animatedOrientations = target_orientations
 
     if animationEnabled:
         for i in range(animatedTargets.shape[0]):
@@ -111,9 +109,9 @@ def updatePlot(frame, animationEnabled):
         #     animatedOrientations[i] = [2*math.pi*frame/interval for j in range(3)]
 
     iterations = 10
-    skeleton = engine.getSkeleton(targets=animatedTargets, orientations=orientations) # Adjacency list of joint connections
+    skeleton = engine.getSkeleton(targets=animatedTargets, orientations=animatedOrientations) # Adjacency list of joint connections
     for i in range(iterations):
-        skeleton = engine.getSkeleton(targets=animatedTargets, orientations=orientations) # Adjacency list of joint connections
+        skeleton = engine.getSkeleton(targets=animatedTargets, orientations=animatedOrientations) # Adjacency list of joint connections
     
     #print(desiredx - skeleton[-1][-1][0], desiredy - skeleton[-1][-1][1], desiredz - skeleton[-1][-1][2])
     # Wipe old plot
@@ -129,7 +127,7 @@ def on_close(event):
     exit()
 
 def main(model:str):
-    global targets, orientations, engine
+    global target_positions, target_orientations, engine
     joints = np.array([])
     links = np.array([])
 
@@ -168,46 +166,17 @@ def main(model:str):
 
 
 
-            targets = np.array([[0.3,0.3,0.3]])
-            orientations = np.array([[0,0,0]])
+            target_positions = np.array([[0.3,0.3,0.3]])
+            target_orientations = np.array([[0,0,0]])
             origin = np.array([[0, 0, 0]])
 
             animationEnabled = False
             manipulators = [SSRTArm(DH_params, joint_map, origin)]
             engine = IKEngine(manipulators)
         case "1":
-            joints = np.array([[0*math.pi/2,
-                                0*math.pi/2,
-                                0*math.pi/2, 
-                                0*math.pi/2, 
-                                0*math.pi/2, 
-                                0*math.pi/2]])
-            
-            links = np.array([[0.4,0.3, 0.2]])
-            #targets = np.array([[0.2, -0.2, 0.2]])
-            orientations = np.array([[1*math.pi/4, 1*math.pi/4,1*math.pi/4]])
-            origins = np.array([[0,0,0]])
-
-            DH_params = np.array([[0, 0, 0, 0],
-                                [0, 0, 0, 0],
-                                [links[0][0], 0, 0, 0],
-                                [links[0][1], 0, 0, 0],
-                                [0, 0, 0, 0],
-                                [links[0][2], 0, 0, 0]])
-            joint_map = np.array([[0, 1], [1, 3], [2, 3], [3, 1], [4, 3], [5, 1]])
-
-
-            for i, joint in enumerate(joints[0]):
-                [j,k] = joint_map[i]
-                DH_params[j, k] = joint
-
-            animationEnabled = False
-            manipulators = [SSRTArm2StageDirect(links[0], origins[0], DH_params, joint_map)]
-            engine = IKEngine(manipulators)
-        case "2":
             joints = np.array([[0,0,0]])
             links = np.array([[0.3,1,1]])
-            targets = np.array([[0.3, -0.0001, -1.2]])
+            target_positions = np.array([[0.3, -0.0001, -1.2]])
             origins = np.array([[0, 0, 0]])
 
             # joints = np.array([[0,0,0]])
@@ -218,7 +187,7 @@ def main(model:str):
             animationEnabled = True
             manipulators = [XOriented3DOF3LinkArm(links[i], joints[i], origins[i]) for i in range(len(joints))]
             engine = IKEngine(manipulators)
-        case "3":
+        case "2":
             joints = np.array([[0*math.pi/2,
                                 0*math.pi/2,
                                 0*math.pi/2, 
@@ -234,7 +203,7 @@ def main(model:str):
         case _:
             joints = np.array([[0,0,0], [0,0,0], [0,0,0], [0,0,0]])
             links = np.array([[0.3,1,1], [0.3,1,1], [0.3,1,1], [0.3,1,1]])
-            targets = np.array([[0.4, -0.4, -1.2], [-0.2, -0.4, -1.2], [0.4, 0.4, -1.2], [-0.2, 0.4, -1.2]])
+            target_positions = np.array([[0.4, -0.4, -1.2], [-0.2, -0.4, -1.2], [0.4, 0.4, -1.2], [-0.2, 0.4, -1.2]])
             origins = np.array([[0.4,-0.2,0], [-0.4,-0.2,0], [0.4,0.2,0], [-0.4,0.2,0]])
 
             # joints = np.array([[0,0,0]])
@@ -248,10 +217,10 @@ def main(model:str):
     
     # Validate targets
     maxmag = 0
-    for i in range(min(len(links), len(targets))):
-        if targets[i] is not None:
+    for i in range(min(len(links), len(target_positions))):
+        if target_positions[i] is not None:
             maxmag = max(maxmag, np.sum(links[i]))
-            if (magnitude(targets[i]) > maxmag):
+            if (magnitude(target_positions[i]) > maxmag):
                 print("Position impossible!")
                 return False
     
